@@ -1,0 +1,37 @@
+# Core Scientific Libraries
+numpy>=1.21.0,<2.0.0
+pandas>=1.3.0,<2.1.0
+scipy>=1.7.0,<2.0.0
+
+# Reinforcement Learning
+stable-baselines3[extra]>=2.0.0,<3.0.0
+gymnasium>=0.26.0,<1.0.0
+torch>=1.11.0,<3.0.0
+tensorboard>=2.8.0,<3.0.0
+
+# Data Acquisition
+yfinance>=0.2.0,<1.0.0
+pandas-datareader>=0.10.0,<1.0.0
+requests>=2.25.0,<3.0.0
+lxml>=4.6.0,<5.0.0
+
+# Visualization
+matplotlib>=3.3.0,<4.0.0
+seaborn>=0.11.0,<1.0.0
+plotly>=5.0.0,<6.0.0
+
+# Utilities and Performance
+pyarrow>=5.0.0,<13.0.0  # For efficient data saving/loading
+tqdm>=4.60.0,<5.0.0     # For progress bars
+joblib>=1.0.0,<2.0.0    # For parallel processing
+numba>=0.56.0,<1.0.0    # For numerical acceleration
+
+# Development and Testing (optional)
+pytest>=6.0.0,<8.0.0
+pytest-cov>=2.12.0,<5.0.0
+black>=21.0.0,<24.0.0
+flake8>=3.9.0,<7.0.0
+
+# System utilities
+psutil>=5.8.0,<6.0.0    # For system monitoring
+cloudpickle>=2.0.0,<3.0.0  # For better serialization
