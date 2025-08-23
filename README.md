@@ -1,50 +1,117 @@
-# RL Portfolio Manager
+# Reinforcement learning in portfolio management
 
-This project implements a Reinforcement Learning (RL) agent for dynamic asset allocation and risk management. The agent uses the **Proximal Policy Optimization (PPO)** algorithm to learn an optimal trading strategy that maximizes risk-adjusted returns in a simulated financial environment.
+## Introduction
 
-## Key Features
+Motivated by "A Deep Reinforcement Learning Framework for the Financial Portfolio Management Problem" by [Jiang et. al. 2017](https://arxiv.org/abs/1706.10059) [1]. In this project:
++ Implement two state-of-art continous deep reinforcement learning algorithms, Deep Deterministic Policy Gradient (DDPG) and Proximal Policy Optimization(PPO) in portfolio management. 
++ Experiments on different settings, such as changing learning rates, optimizers, neutral network structures, China/America Stock data, initializers, noise, features to figure out their influence on the RL agents' performance(cumulative return).
+## Using the environment
 
-- **Dynamic Policy:** The RL agent adapts its strategy to changing market conditions, unlike static or rule-based methods.
-- **Risk Management:** The reward function is based on the **Sharpe Ratio** and includes penalties for transaction costs to balance returns and risk.
-- **Custom Environment:** A custom `Gymnasium` (formerly OpenAI Gym) environment simulates portfolio trading with real-world financial data.
-- **Technical Indicators:** The agent's decisions are informed by a rich set of features, including Moving Averages (MA, EMA), RSI, MACD, and Bollinger Bands.
+The environment provides supports for easily testing different reinforcement learning in portfolio management.
++ main.py -  the entrance to run our training and testing framework
++ ./saved_network- contains different saved models after training, with DDPG and PPO sub folders
++ ./summary- contains summaries, also with DDPG and PPO sub folder
++ ./agent- contains ddpg.py, ppo.py and ornstein_uhlenbeck.py(the noise we add to agent's actions during training)
++ ./data- contains America.csv for USA stock data, China.csv for China stock data. download_data.py can download China stock data by Tushare. environment.py generates states data for trading agents.
++ config.json- the configuration file for training or testing settings:
+```
+{
+	"data":{
+		"start_date":"2015-01-01",
+		"end_date":"2018-01-01",
+		"market_types":["stock"],
+		"ktype":"D"
+	},
+	"session":{
+		"start_date":"2015-01-05",
+		"end_date":"2017-01-01",
+		"market_types":"America",
+	    "codes":["AAPL","ADBE","BABA","SNE","V"],
+		"features":["close"],
+		"agents":["CNN","DDPG","3"],
+		"epochs":"10000",
+		"noise_flag":"False",
+		"record_flag":"False",
+		"plot_flag":"False",
+		"reload_flag":"False",
+		"trainable":"True",
+		"method":"model_free"
+	}
+}
+```
 
-## Technology Stack
+Download stock data in shenzhen and shanghai stock market in the given period in Day(D) frequency. Options: hours, minutes
+```
+python main.py --mode=download_data
+```
+Training/Testing
+```
+python main.py --mode=train
+```
 
-- **Python 3.9+**
-- **RL Framework:** [Stable-Baselines3](https://github.com/DLR-RM/stable-baselines3)
-- **RL Environment:** [Gymnasium](https://gymnasium.farama.org/)
-- **Data Handling:** Pandas, NumPy
-- **Data Source:** yfinance
+```
+python main.py --mode=test
+```
++ noise_flag=True: actions produced by RL agents are distorted by adding UO noise.
++ record_flag=True: trading details would be stored as a csv file named by the epoch and cumulative return each epoch.
++ plot_flag=True: the trend of wealth would be plot each epoch.
++ reload_flag=True: tensorflow would search latest saved model in ./saved_network and reload.
++ trainable=True: parameters would be updated during each epoch.
++ method=model_based: the first epochs our agents would try to imitate a greedy strategy to quickly improve its performance. Then it would leave it and continue to self-improve by model-free reinforcement learning.
 
-## How to Run
+## Result
++ Training data (USA)
+  ![USA](result/USA.png)
++ Training data (China)
+  ![China](result/China.png)
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/rl-portfolio-manager.git
-    cd rl-portfolio-manager
-    ```
++ Backtest (USA)
+  ![backtest_USA](result/backtest_USA.png)
 
-2.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
++ APV under different feature combinations
+  ![features_reward](result/features_reward.png)
 
-3.  **Train the agent:**
-    ```bash
-    python src/main.py --train
-    ```
+**The other results can be found in our report.**(https://arxiv.org/abs/1808.09940).
 
-4.  **Evaluate the agent's performance:**
-    ```bash
-    python src/main.py --evaluate
-    ```
 
-## Performance Benchmarks
 
-The agent's performance is evaluated against several traditional strategies:
-- **Buy-and-Hold (SPY)**
-- **Equal-Weighted Portfolio**
-- **Mean-Variance Optimization (Markowitz)**
 
-Metrics include Cumulative Return, Annualized Sharpe Ratio, and Max Drawdown.
+
+## Contribution
+
+### Contributors
+
+* ***Zhipeng Liang***
+* ***Kangkang Jiang***
+* ***Hao Chen***
+* ***Junhao Zhu***
+* ***Yanran Li***
+### Institutions
+
++ ***AI&FintechLab of Likelihood Technology***
++ ***Sun Yat-sen University***
+
+## Acknowledegment
+
+We would like to say thanks to ***Mingwen Liu*** from ***ShingingMidas Private Fund***, ***Zheng Xie*** and ***Xingyu Fu*** from ***Sun Yat-sen University*** for their generous guidance throughout the project.
+
+## Set up
+
+Python Version
+
++ ***3.6***
+
+Modules needed
+
++ ***tensorflow(tensorflow-gpu)***
++ ***numpy*** 
++ ***pandas*** 
++ ***matplotlib***
+
+## Contact
+
++ liangzhp6@mail2.sysu.edu.cn
++ jiangkk3@mail2.sysu.edu.cn
++ chenhao348@mail2.sysu.edu.cn
++ zhujh25@mail2.sysu.edu.cn
++ liyr8@mail2.sysu.edu.cn

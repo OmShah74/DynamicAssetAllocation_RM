@@ -1,30 +1,74 @@
-# Python
+# =================================================================
+# Python specific ignores
+# =================================================================
+# Byte-compiled / optimized / DLL files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
 .Python
-env/
-venv/
-*.egg-info/
-dist/
 build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Data & Models
-data/
-models/
-results/
-*.pkl
-*.csv
-*.zip
-*.log
+# =================================================================
+# Virtual Environment
+# =================================================================
+# Ignore virtual environment folders commonly named venv, env, .venv, etc.
+venv/
+env/
+.venv/
+.env/
+ENV/
 
-# IDE / OS specific
-.idea/
+# =================================================================
+# Project-specific generated files
+# =================================================================
+# Ignore all saved models. These are large binary files generated during training.
+saved_models/
+
+# Ignore all training/testing results. These are generated artifacts.
+
+
+# Ignore TensorBoard and other logging directories from the original code.
+summary/
+
+# Ignore any downloaded data files that are not part of the core dataset.
+stock_data.csv
+
+# =================================================================
+# IDE and Editor specific ignores
+# =================================================================
+# VS Code
 .vscode/
-*.swp
-*~
-.DS_Store
 
-# Notebooks
-.ipynb_checkpoints
+# PyCharm
+.idea/
+
+# =================================================================
+# OS specific ignores
+# =================================================================
+# Windows thumbnail cache
+Thumbs.db
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
