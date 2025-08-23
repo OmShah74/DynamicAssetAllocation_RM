@@ -1,117 +1,57 @@
-# Reinforcement learning in portfolio management
+# Reinforcement Learning for Portfolio Management
 
-## Introduction
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Python Version](https://img.shields.io/badge/python-3.8%2B-brightgreen.svg)
+![TensorFlow Version](https://img.shields.io/badge/tensorflow-2.15-orange.svg)
 
-Motivated by "A Deep Reinforcement Learning Framework for the Financial Portfolio Management Problem" by [Jiang et. al. 2017](https://arxiv.org/abs/1706.10059) [1]. In this project:
-+ Implement two state-of-art continous deep reinforcement learning algorithms, Deep Deterministic Policy Gradient (DDPG) and Proximal Policy Optimization(PPO) in portfolio management. 
-+ Experiments on different settings, such as changing learning rates, optimizers, neutral network structures, China/America Stock data, initializers, noise, features to figure out their influence on the RL agents' performance(cumulative return).
-## Using the environment
+This project trains an autonomous agent to manage a stock portfolio using deep reinforcement learning (DRL). It implements two powerful algorithms, **Deep Deterministic Policy Gradient (DDPG)** and **Proximal Policy Optimization (PPO)**, to learn an optimal trading strategy that aims to maximize financial returns.
 
-The environment provides supports for easily testing different reinforcement learning in portfolio management.
-+ main.py -  the entrance to run our training and testing framework
-+ ./saved_network- contains different saved models after training, with DDPG and PPO sub folders
-+ ./summary- contains summaries, also with DDPG and PPO sub folder
-+ ./agent- contains ddpg.py, ppo.py and ornstein_uhlenbeck.py(the noise we add to agent's actions during training)
-+ ./data- contains America.csv for USA stock data, China.csv for China stock data. download_data.py can download China stock data by Tushare. environment.py generates states data for trading agents.
-+ config.json- the configuration file for training or testing settings:
-```
-{
-	"data":{
-		"start_date":"2015-01-01",
-		"end_date":"2018-01-01",
-		"market_types":["stock"],
-		"ktype":"D"
-	},
-	"session":{
-		"start_date":"2015-01-05",
-		"end_date":"2017-01-01",
-		"market_types":"America",
-	    "codes":["AAPL","ADBE","BABA","SNE","V"],
-		"features":["close"],
-		"agents":["CNN","DDPG","3"],
-		"epochs":"10000",
-		"noise_flag":"False",
-		"record_flag":"False",
-		"plot_flag":"False",
-		"reload_flag":"False",
-		"trainable":"True",
-		"method":"model_free"
-	}
-}
-```
+The agent learns by interacting with a simulated stock market built from historical data, receiving rewards or penalties based on its investment decisions.
 
-Download stock data in shenzhen and shanghai stock market in the given period in Day(D) frequency. Options: hours, minutes
-```
-python main.py --mode=download_data
-```
-Training/Testing
-```
-python main.py --mode=train
-```
+---
 
-```
-python main.py --mode=test
-```
-+ noise_flag=True: actions produced by RL agents are distorted by adding UO noise.
-+ record_flag=True: trading details would be stored as a csv file named by the epoch and cumulative return each epoch.
-+ plot_flag=True: the trend of wealth would be plot each epoch.
-+ reload_flag=True: tensorflow would search latest saved model in ./saved_network and reload.
-+ trainable=True: parameters would be updated during each epoch.
-+ method=model_based: the first epochs our agents would try to imitate a greedy strategy to quickly improve its performance. Then it would leave it and continue to self-improve by model-free reinforcement learning.
+## Conceptual Details
 
-## Result
-+ Training data (USA)
-  ![USA](result/USA.png)
-+ Training data (China)
-  ![China](result/China.png)
+The project is built on the **Actor-Critic** framework, where two neural networks collaborate to learn an effective policy.
 
-+ Backtest (USA)
-  ![backtest_USA](result/backtest_USA.png)
+-   The **Actor** is the decision-maker. It looks at the current market state and decides on an action (i.e., how to allocate the portfolio funds).
+-   The **Critic** is the evaluator. It analyzes the Actor's action and estimates the long-term value of that decision, providing crucial feedback that helps the Actor improve over time.
 
-+ APV under different feature combinations
-  ![features_reward](result/features_reward.png)
+This project allows you to train and compare two different implementations of this framework:
 
-**The other results can be found in our report.**(https://arxiv.org/abs/1808.09940).
+1.  **DDPG (Deep Deterministic Policy Gradient)**: An algorithm that learns a *deterministic* policy, meaning it tries to output the single best action for any given state. It is highly sample-efficient as it learns from a large memory of past experiences.
 
+2.  **PPO (Proximal Policy Optimization)**: An algorithm that learns a *stochastic* (probabilistic) policy, meaning it outputs a probability distribution over possible actions. Its key feature is a "clipped" objective function that ensures stable and reliable training, making it a very robust choice.
 
+## Dataset
 
+The project uses historical daily stock market data provided in the `/data` directory.
 
+-   **`America.csv`**: Contains data for a selection of stocks from the US market (e.g., AAPL, ADBE, BABA).
+-   **`China.csv`**: Contains data for stocks from the Chinese market.
 
-## Contribution
+Each dataset includes essential features like **open, high, low, and close** prices, which are used to construct the state representation for the learning agent.
 
-### Contributors
+---
 
-* ***Zhipeng Liang***
-* ***Kangkang Jiang***
-* ***Hao Chen***
-* ***Junhao Zhu***
-* ***Yanran Li***
-### Institutions
+## Configuration (`config.json`)
 
-+ ***AI&FintechLab of Likelihood Technology***
-+ ***Sun Yat-sen University***
+All experiment parameters are controlled from the `config.json` file. This is the project's control panel, allowing you to define a run without changing any code.
 
-## Acknowledegment
+**Key Parameters to Configure:**
 
-We would like to say thanks to ***Mingwen Liu*** from ***ShingingMidas Private Fund***, ***Zheng Xie*** and ***Xingyu Fu*** from ***Sun Yat-sen University*** for their generous guidance throughout the project.
+-   `"market_types"`: Choose the dataset to use: `"America"` or `"China"`.
+-   `"codes"`: A list of the stock tickers you want the agent to trade.
+-   `"agents"`: Defines the agent to be used and the historical window length.
+-   `"epochs"`: The number of training episodes.
+-   `"reload_flag"`: Set to `True` to load a saved model for testing, or `False` to train a new model from scratch.
 
-## Set up
+**Example: Switching between DDPG and PPO**
 
-Python Version
-
-+ ***3.6***
-
-Modules needed
-
-+ ***tensorflow(tensorflow-gpu)***
-+ ***numpy*** 
-+ ***pandas*** 
-+ ***matplotlib***
-
-## Contact
-
-+ liangzhp6@mail2.sysu.edu.cn
-+ jiangkk3@mail2.sysu.edu.cn
-+ chenhao348@mail2.sysu.edu.cn
-+ zhujh25@mail2.sysu.edu.cn
-+ liyr8@mail2.sysu.edu.cn
+To use the **DDPG** agent with a 5-day historical window:
+```json
+"agents": [
+    "CNN",
+    "DDPG",
+    "5"
+]
