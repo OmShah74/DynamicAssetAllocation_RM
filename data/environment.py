@@ -19,8 +19,8 @@ class Environment:
 
         print("*------------- Preparing Environment Data ---------------*")
         
-        # FIX: Added low_memory=False to suppress the DtypeWarning
-        data = pd.read_csv(f'./data/{market}.csv', index_col=0, parse_dates=True, low_memory=False)
+        # CORRECTED LINE: Read the CSV and set the 'date' column as the index
+        data = pd.read_csv(f'./data/{market}.csv', index_col='date', parse_dates=True, low_memory=False)
         
         data.sort_index(inplace=True)
 
@@ -99,11 +99,8 @@ class Environment:
         
         r = portfolio_return - mu
         
-        # <<< START: THIS IS THE FIX FOR THE NaN ERROR >>>
-        # Clip the net return to a small positive number to prevent log(negative)
         r = np.clip(r, eps, None)
         reward = np.log(r)
-        # <<< END: FIX >>>
         
         next_w = (w2[0] * price_vector) / (portfolio_return + eps)
 
