@@ -7,7 +7,6 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from argparse import ArgumentParser
-from decimal import Decimal
 
 # Import modernized components
 from agents.ornstein_uhlenbeck import OrnsteinUhlenbeckActionNoise
@@ -81,7 +80,6 @@ class StockTrader:
         """Prints a summary of the episode's performance to the console."""
         total_return_factor = math.exp(self.total_reward)
         avg_critic_loss = np.mean(self.loss_history) if self.loss_history else 0
-        avg_actor_loss = np.mean(self.actor_loss_history) if self.actor_loss_history else 0
         
         print(f"*----- Episode: {epoch}, Final Wealth: {self.wealth:,.2f}, "
               f"Return: {total_return_factor:.3f}x, "
@@ -93,7 +91,7 @@ class StockTrader:
         """Displays a plot of the portfolio's wealth over the episode."""
         pd.Series(self.wealth_history).plot(title="Portfolio Wealth Over Time", figsize=(10, 6))
         plt.xlabel("Time Steps")
-        plt.ylabel("Wealth (USD)")
+        plt.ylabel("Wealth (USD/INR)")
         plt.grid(True)
         plt.show()
 
@@ -113,20 +111,28 @@ def traversal(stocktrader: StockTrader, agent, env: Environment, epoch: int, noi
     contin = 1
     
     while contin:
-        # Agent predicts an action (new portfolio weights)
-        w2 = agent.predict(s)
-        
-        # Apply noise for exploration if in training mode
-        if noise_flag and trainable:
+        # <<< START: THIS IS THE FIX FOR YOUR ERROR >>>
+        # Handle different predict outputs for PPO and DDPG
+        if framework == 'PPO':
+            raw_action, w2 = agent.predict(s)
+        else: # DDPG
+            w2 = agent.predict(s)
+        # <<< END: FIX >>>
+
+        # Apply noise for exploration if in training mode (only for DDPG)
+        if framework == 'DDPG' and noise_flag and trainable:
             decaying_noise_ratio = max(0.1, (epochs - epoch) / epochs)
             w2 = stocktrader.action_processor(w2, decaying_noise_ratio)
 
         # Environment processes the action and returns the outcome
         env_info = env.step(w1, w2)
-        r, contin, s_next, w_next, p = env_info['reward'], env_info['continue'], env_info['next state'], env_info['weight vector'], env_info['price']
+        r, contin, s_next, w_next = env_info['reward'], env_info['continue'], env_info['next state'], env_info['weight vector']
         
-        # Agent stores the experience
-        agent.save_transition(s, w2, r, contin, s_next, w_next)
+        # Call the correct save_transition signature for each agent
+        if framework == 'PPO':
+            agent.save_transition(s, raw_action, r, contin, s_next)
+        else: # DDPG
+            agent.save_transition(s, w2, r, contin, s_next, w_next)
         
         agent_info = {}
         if trainable and framework == 'DDPG':
@@ -211,10 +217,19 @@ def session(config: dict, mode: str):
     stocktrader = StockTrader()
     stocktrader.initialize_noise()
 
+    # Early stopping parameters
+    patience = 50 
+    best_wealth = 0
+    epochs_without_improvement = 0
+
     if mode == 'train':
         print(f"--- Starting Training for {epochs} Epochs ---")
         for epoch in range(epochs):
             print(f"\n>>> Epoch {epoch}/{epochs-1} <<<")
+            
+            env.reset()
+            stocktrader.reset()
+
             traversal(
                 stocktrader, agent, env, epoch,
                 noise_flag=params['noise_flag'] == 'True',
@@ -224,13 +239,26 @@ def session(config: dict, mode: str):
             )
             
             stocktrader.print_result(epoch, agent)
+            
+            # Early stopping logic
+            current_wealth = stocktrader.wealth
+            if current_wealth > best_wealth:
+                best_wealth = current_wealth
+                epochs_without_improvement = 0
+                print(f"INFO: New best wealth achieved: {best_wealth:,.2f}. Resetting patience.")
+            else:
+                epochs_without_improvement += 1
+                print(f"INFO: No improvement for {epochs_without_improvement}/{patience} epochs.")
+
+            if epochs_without_improvement >= patience:
+                print(f"\n--- Early stopping triggered after {patience} epochs without improvement. ---")
+                print(f"Best final wealth achieved during this run was {best_wealth:,.2f}.")
+                break
+            
             if params['record_flag'] == 'True':
                 stocktrader.write_history(epoch, agent_name)
             if params['plot_flag'] == 'True':
                 stocktrader.plot_result()
-
-            stocktrader.reset()
-            env.reset()
     
     elif mode == 'test':
         print("--- Running in Test Mode ---")
@@ -272,8 +300,12 @@ def main():
     if args['mode'] == 'download':
         from data.download_data import DataDownloader
         print("--- Starting Data Download ---")
+        
+        # FIX: Call the downloader methods in the correct order
         data_downloader = DataDownloader(config)
-        data_downloader.save_data()
+        data_downloader.download_all_.data() # First, download the data
+        data_downloader.save_data()         # Then, save it to a file
+        
         print("--- Data Download Finished ---")
     else:
         session(config, args['mode'])

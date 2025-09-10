@@ -1,23 +1,40 @@
 {
-	"data":{
-		"start_date":"2015-01-01",
-		"end_date":"2018-01-01",
-		"market_types":["stock"],
-		"ktype":"D"
-	},
-	"session":{
-		"start_date":"2015-01-05",
-		"end_date":"2017-01-01",
-		"market_types":"America",
-	    "codes":["AAPL","ADBE","BABA","SNE","V"],
-		"features":["close"],
-		"agents":["CNN","DDPG","3"],
-		"epochs":"10000",
-		"noise_flag":"False",
-		"record_flag":"False",
-		"plot_flag":"False",
-		"reload_flag":"False",
-		"trainable":"True",
-		"method":"model_free"
-	}
+    "data": {
+        "start_date": "2012-01-01",
+        "end_date": "2024-01-01",
+        "codes": [
+            "RELIANCE.NS",
+            "TCS.NS",
+            "HDFCBANK.NS",
+            "INFY.NS",
+            "ICICIBANK.NS",
+            "HINDUNILVR.NS"
+        ]
+    },
+    "session": {
+        "start_date": "2012-01-05",
+        "end_date": "2023-01-01",
+        "market_types": "India",
+        "codes": [
+            "RELIANCE.NS",
+            "TCS.NS",
+            "HDFCBANK.NS",
+            "INFY.NS",
+            "ICICIBANK.NS",
+            "HINDUNILVR.NS"
+        ],
+        "features": ["close", "open", "high", "low", "volume"],
+        "agents": [
+            "CNN",
+            "PPO",
+            "3"
+        ],
+        "epochs": "500",
+        "noise_flag": "False",
+        "record_flag": "False",
+        "plot_flag": "False",
+        "reload_flag": "False",
+        "trainable": "True",
+        "method": "model_free"
+    }
 }
