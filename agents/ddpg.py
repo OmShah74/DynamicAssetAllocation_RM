@@ -4,19 +4,19 @@ from tensorflow.keras import layers
 import numpy as np
 from collections import deque
 import random
+import os
+import re # Import regular expressions library
 
+# (The ActorNetwork and CriticNetwork classes remain exactly the same)
 class ActorNetwork(tf.keras.Model):
     def __init__(self, M):
         super(ActorNetwork, self).__init__()
         self.M = M
-        # CNN layers
         self.conv1 = layers.Conv2D(32, (1, 3), activation='relu', padding='valid')
         self.bn1 = layers.BatchNormalization()
         self.conv2 = layers.Conv2D(32, (1, 1), activation='relu', padding='valid')
         self.bn2 = layers.BatchNormalization()
         self.flatten = layers.Flatten()
-        
-        # Dense layers
         self.d1 = layers.Dense(64, activation='relu')
         self.bn3 = layers.BatchNormalization()
         self.dropout1 = layers.Dropout(0.5)
@@ -36,16 +36,11 @@ class ActorNetwork(tf.keras.Model):
 class CriticNetwork(tf.keras.Model):
     def __init__(self):
         super(CriticNetwork, self).__init__()
-        # State pathway
         self.conv1 = layers.Conv2D(32, (1, 3), activation='relu', padding='valid')
         self.bn1 = layers.BatchNormalization()
         self.flatten = layers.Flatten()
         self.state_d1 = layers.Dense(64, activation='relu')
-
-        # Action pathway
         self.action_d1 = layers.Dense(64, activation='relu')
-
-        # Combined pathway
         self.concat = layers.Concatenate()
         self.d2 = layers.Dense(64, activation='relu')
         self.bn2 = layers.BatchNormalization()
@@ -58,14 +53,13 @@ class CriticNetwork(tf.keras.Model):
         s_out = self.bn1(s_out)
         s_out = self.flatten(s_out)
         s_out = self.state_d1(s_out)
-
         a_out = self.action_d1(action)
-        
         x = self.concat([s_out, a_out])
         x = self.d2(x)
         x = self.bn2(x)
         x = self.dropout1(x)
         return self.out(x)
+
 
 class DDPG:
     def __init__(self, M, L, N, name, load_weights=False):
@@ -75,13 +69,11 @@ class DDPG:
         self.gamma = 0.99
         self.tau = 0.001
 
-        # Create actor and critic networks
         self.actor = ActorNetwork(M)
         self.critic = CriticNetwork()
         self.target_actor = ActorNetwork(M)
         self.target_critic = CriticNetwork()
 
-        # Build networks and copy weights
         dummy_state = tf.random.normal([1, M, L, N])
         dummy_action = self.actor(dummy_state)
         self.critic([dummy_state, dummy_action])
@@ -91,7 +83,6 @@ class DDPG:
         self.target_actor.set_weights(self.actor.get_weights())
         self.target_critic.set_weights(self.critic.get_weights())
 
-        # Optimizers
         self.actor_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-4)
         self.critic_optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
         self.mse = tf.keras.losses.MeanSquaredError()
@@ -131,7 +122,6 @@ class DDPG:
         return actor_loss
 
     def _update_target_networks(self):
-        # Soft update for target networks
         for target_weights, weights in zip(self.target_actor.variables, self.actor.variables):
             target_weights.assign(weights * self.tau + target_weights * (1 - self.tau))
         
@@ -161,10 +151,42 @@ class DDPG:
         self.actor.save_weights(f'./saved_models/DDPG/{self.name}_actor_{epoch}.weights.h5')
         self.critic.save_weights(f'./saved_models/DDPG/{self.name}_critic_{epoch}.weights.h5')
 
+    # <<< --- THIS IS THE CORRECTED FUNCTION --- >>>
     def load_models(self):
+        """
+        Loads the weights from the most recent training epoch.
+        """
+        model_dir = f'./saved_models/DDPG/'
         try:
-            self.actor.load_weights(f'./saved_models/DDPG/{self.name}_actor.weights.h5')
-            self.critic.load_weights(f'./saved_models/DDPG/{self.name}_critic.weights.h5')
-            print("Models loaded successfully.")
-        except:
-            print("Could not load models. Starting from scratch.")
+            # 1. Find all actor weight files for this specific agent configuration
+            actor_files = [f for f in os.listdir(model_dir) if f.startswith(f'{self.name}_actor_') and f.endswith('.weights.h5')]
+
+            if not actor_files:
+                print("Could not find any model checkpoints. Starting from scratch.")
+                return
+
+            # 2. Extract the epoch numbers from the filenames and find the latest one
+            latest_epoch = -1
+            for f in actor_files:
+                # Use regex to find the number between '_' and '.weights'
+                match = re.search(r'_(\d+)\.weights', f)
+                if match:
+                    epoch = int(match.group(1))
+                    if epoch > latest_epoch:
+                        latest_epoch = epoch
+            
+            if latest_epoch == -1:
+                print("Could not parse epoch numbers from model files. Starting from scratch.")
+                return
+
+            # 3. Construct the full paths to the latest actor and critic models
+            actor_path = os.path.join(model_dir, f'{self.name}_actor_{latest_epoch}.weights.h5')
+            critic_path = os.path.join(model_dir, f'{self.name}_critic_{latest_epoch}.weights.h5')
+
+            # 4. Load the weights
+            self.actor.load_weights(actor_path)
+            self.critic.load_weights(critic_path)
+            print(f"Models for epoch {latest_epoch} loaded successfully.")
+
+        except Exception as e:
+            print(f"Could not load models due to an error: {e}. Starting from scratch.")

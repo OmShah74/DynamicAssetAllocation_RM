@@ -29,11 +29,11 @@
             "DDPG",
             "3"
         ],
-        "epochs": "500",
+        "epochs": "50",
         "noise_flag": "False",
         "record_flag": "False",
         "plot_flag": "False",
-        "reload_flag": "False",
+        "reload_flag": "True",
         "trainable": "True",
         "method": "model_free"
     }
