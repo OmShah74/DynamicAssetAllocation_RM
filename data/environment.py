@@ -18,7 +18,10 @@ class Environment:
         self.N = len(features)
 
         print("*------------- Preparing Environment Data ---------------*")
-        data = pd.read_csv(f'./data/{market}.csv', index_col=0, parse_dates=True)
+        
+        # CORRECTED LINE: Read the CSV and set the 'date' column as the index
+        data = pd.read_csv(f'./data/{market}.csv', index_col='date', parse_dates=True, low_memory=False)
+        
         data.sort_index(inplace=True)
 
         data["code"] = data["code"].astype(str)
@@ -48,10 +51,10 @@ class Environment:
             # Normalize prices by the last closing price
             base_price = asset_data['close'].iloc[-1]
             for col in features:
-                if col in asset_data.columns:
+                if col in asset_data.columns and base_price != 0:
                     asset_data[col] /= base_price
 
-            asset_dict[str(asset)] = asset_data.drop(columns=['code'])
+            asset_dict[str(asset)] = asset_data.drop(columns=['code'], errors='ignore')
 
         print("*------------- Generating State Tensors ---------------*")
         self.states = []
@@ -91,29 +94,28 @@ class Environment:
 
         price_vector = self.price_history[self.t]
         
-        # Transaction cost calculation
         mu = self.cost * (np.abs(w2[0][1:] - w1[0][1:])).sum()
-        
-        # Portfolio return calculation
         portfolio_return = np.dot(w2[0], price_vector)
-        r = portfolio_return - mu
-        reward = np.log(r + eps)
         
-        # Update portfolio weights for the next step
-        next_w = (w2[0] * price_vector) / (np.dot(w2[0], price_vector) + eps)
+        r = portfolio_return - mu
+        
+        r = np.clip(r, eps, None)
+        reward = np.log(r)
+        
+        next_w = (w2[0] * price_vector) / (portfolio_return + eps)
 
         self.t += 1
         not_terminal = 1
         if self.t >= len(self.states):
             not_terminal = 0
             self.reset()
-            next_state = self.states[-1] # Return last state on terminal
+            next_state = self.states[-1]
         else:
             next_state = self.states[self.t]
 
         return {
             'reward': reward, 'continue': not_terminal, 'next state': next_state,
-            'weight vector': next_w.reshape(1, -1), 'price': price_vector, 'risk': 0 # Risk logic can be added here
+            'weight vector': next_w.reshape(1, -1), 'price': price_vector, 'risk': 0
         }
 
     def reset(self):

@@ -60,26 +60,37 @@ class PPO:
         self.buffer = {'states': [], 'actions': [], 'rewards': [], 'log_probs': []}
 
     def predict(self, state):
+        """
+        FIX: Predicts an action and the final weights, returning BOTH.
+        """
         mu, sigma, _ = self.model(state)
         dist = tfp.distributions.Normal(loc=mu, scale=sigma + 1e-5)
-        action = dist.sample()
+        raw_action = dist.sample() # This is the raw logit/action
         
-        # Convert action to portfolio weights (must sum to 1)
-        action_weights = tf.nn.softmax(action)
-        return action_weights.numpy()
+        # Convert raw action to portfolio weights that sum to 1
+        action_weights = tf.nn.softmax(raw_action)
+        
+        # Return both the raw action and the final weights
+        return raw_action.numpy(), action_weights.numpy()
 
-    def save_transition(self, s, w, r, not_terminal, s_next, action_precise):
-        # For PPO, we store transitions for the whole episode
+    def save_transition(self, s, raw_action, r, not_terminal, s_next):
+        """
+        Stores the transition in the buffer using the raw_action for stability.
+        """
         mu, sigma, _ = self.model(s)
         dist = tfp.distributions.Normal(loc=mu, scale=sigma + 1e-5)
-        log_prob = dist.log_prob(tf.math.log(w / (1-w + 1e-8))) # Inverse softmax might be unstable, using action directly is better if available
+        
+        # Use the raw_action directly to calculate the log probability
+        log_prob = dist.log_prob(raw_action)
 
         self.buffer['states'].append(s[0])
-        self.buffer['actions'].append(w[0])
+        # Store the raw action, not the final weights
+        self.buffer['actions'].append(raw_action[0])
         self.buffer['rewards'].append(r)
         self.buffer['log_probs'].append(log_prob.numpy()[0])
     
     def _calculate_discounted_rewards(self, rewards, last_state_value):
+        """Calculates the discounted rewards for the episode."""
         discounted_rewards = np.zeros_like(rewards, dtype=np.float32)
         running_add = last_state_value
         for t in reversed(range(len(rewards))):
@@ -93,22 +104,21 @@ class PPO:
             mu, sigma, values = self.model(states, training=True)
             dist = tfp.distributions.Normal(loc=mu, scale=sigma + 1e-5)
             
-            # Inverse softmax approx.
-            action_logits = tf.math.log(actions / (1-actions + 1e-8)) 
-            new_log_probs = dist.log_prob(action_logits)
+            # Calculate new log_probs directly from the stored raw actions
+            new_log_probs = dist.log_prob(actions)
 
             advantages = discounted_rewards - values
             
             # Actor Loss (Clipped Surrogate Objective)
             ratio = tf.exp(new_log_probs - old_log_probs)
             surr1 = ratio * advantages
-            surr2 = tf.clip_by_value(ratio, 1 - self.clip_epsilon, 1 + self.clip_epsilon) * advantages
+            surr2 = tf.clip_by_value(ratio, 1.0 - self.clip_epsilon, 1.0 + self.clip_epsilon) * advantages
             actor_loss = -tf.reduce_mean(tf.minimum(surr1, surr2))
 
             # Critic Loss
             critic_loss = self.mse(discounted_rewards, values)
 
-            # Total Loss (can add entropy bonus for exploration)
+            # Total Loss
             total_loss = actor_loss + 0.5 * critic_loss
         
         grads = tape.gradient(total_loss, self.model.trainable_variables)
@@ -119,14 +129,12 @@ class PPO:
         if not self.buffer['rewards']:
             return {"critic_loss": 0}
         
-        # Get value of the last state to bootstrap rewards
         last_state = self.buffer['states'][-1][np.newaxis, ...]
         _, _, last_state_value = self.model(last_state)
         
         rewards = self.buffer['rewards']
         discounted_rewards = self._calculate_discounted_rewards(rewards, last_state_value.numpy()[0, 0])
         
-        # Prepare tensors for training
         states = tf.convert_to_tensor(np.array(self.buffer['states']), dtype=tf.float32)
         actions = tf.convert_to_tensor(np.array(self.buffer['actions']), dtype=tf.float32)
         old_log_probs = tf.convert_to_tensor(np.array(self.buffer['log_probs']), dtype=tf.float32)
@@ -145,7 +153,11 @@ class PPO:
 
     def load_models(self):
         try:
-            self.model.load_weights(f'./saved_models/PPO/{self.name}_model.weights.h5')
-            print("Model loaded successfully.")
-        except:
-            print("Could not load model. Starting from scratch.")
+            latest_checkpoint = tf.train.latest_checkpoint(f'./saved_models/PPO/')
+            if latest_checkpoint:
+                self.model.load_weights(latest_checkpoint)
+                print(f"PPO Model loaded successfully from {latest_checkpoint}.")
+            else:
+                 print("Could not find PPO model checkpoint. Starting from scratch.")
+        except Exception as e:
+            print(f"Could not load PPO model. Error: {e}. Starting from scratch.")
