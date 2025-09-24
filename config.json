@@ -26,15 +26,15 @@
         "features": ["close", "open", "high", "low", "volume"],
         "agents": [
             "CNN",
-            "DDPG",
+            "PPO",
             "3"
         ],
-        "epochs": "50",
+        "epochs": "500",
         "noise_flag": "False",
         "record_flag": "False",
         "plot_flag": "False",
         "reload_flag": "True",
-        "trainable": "True",
+        "trainable": "False",
         "method": "model_free"
     }
 }

@@ -68,6 +68,7 @@ class DDPG:
         self.batch_size = 32
         self.gamma = 0.99
         self.tau = 0.001
+        self.model_save_path = f'./saved_models/DDPG/'
 
         self.actor = ActorNetwork(M)
         self.critic = CriticNetwork()
@@ -147,46 +148,28 @@ class DDPG:
 
         return {"critic_loss": critic_loss.numpy(), "q_value": q_value.numpy(), "actor_loss": actor_loss.numpy()}
 
-    def save_models(self, epoch):
-        self.actor.save_weights(f'./saved_models/DDPG/{self.name}_actor_{epoch}.weights.h5')
-        self.critic.save_weights(f'./saved_models/DDPG/{self.name}_critic_{epoch}.weights.h5')
+    # <<< START: MODIFIED SECTION >>>
+    # This function is now specifically for saving the BEST model
+    def save_best_models(self):
+        """Saves the weights of the current model as the best model."""
+        actor_path = os.path.join(self.model_save_path, f'{self.name}_actor_best.weights.h5')
+        critic_path = os.path.join(self.model_save_path, f'{self.name}_critic_best.weights.h5')
+        self.actor.save_weights(actor_path)
+        self.critic.save_weights(critic_path)
+        print(f"--- New best model saved ---")
 
-    # <<< --- THIS IS THE CORRECTED FUNCTION --- >>>
+    # This function is now simplified to only load the BEST model
     def load_models(self):
-        """
-        Loads the weights from the most recent training epoch.
-        """
-        model_dir = f'./saved_models/DDPG/'
+        """Loads the best available model weights."""
         try:
-            # 1. Find all actor weight files for this specific agent configuration
-            actor_files = [f for f in os.listdir(model_dir) if f.startswith(f'{self.name}_actor_') and f.endswith('.weights.h5')]
-
-            if not actor_files:
-                print("Could not find any model checkpoints. Starting from scratch.")
-                return
-
-            # 2. Extract the epoch numbers from the filenames and find the latest one
-            latest_epoch = -1
-            for f in actor_files:
-                # Use regex to find the number between '_' and '.weights'
-                match = re.search(r'_(\d+)\.weights', f)
-                if match:
-                    epoch = int(match.group(1))
-                    if epoch > latest_epoch:
-                        latest_epoch = epoch
-            
-            if latest_epoch == -1:
-                print("Could not parse epoch numbers from model files. Starting from scratch.")
-                return
-
-            # 3. Construct the full paths to the latest actor and critic models
-            actor_path = os.path.join(model_dir, f'{self.name}_actor_{latest_epoch}.weights.h5')
-            critic_path = os.path.join(model_dir, f'{self.name}_critic_{latest_epoch}.weights.h5')
-
-            # 4. Load the weights
-            self.actor.load_weights(actor_path)
-            self.critic.load_weights(critic_path)
-            print(f"Models for epoch {latest_epoch} loaded successfully.")
-
+            actor_path = os.path.join(self.model_save_path, f'{self.name}_actor_best.weights.h5')
+            critic_path = os.path.join(self.model_save_path, f'{self.name}_critic_best.weights.h5')
+            if os.path.exists(actor_path) and os.path.exists(critic_path):
+                self.actor.load_weights(actor_path)
+                self.critic.load_weights(critic_path)
+                print(f"Best DDPG models loaded successfully from {self.model_save_path}.")
+            else:
+                print("Could not find a best model checkpoint. Starting from scratch.")
         except Exception as e:
-            print(f"Could not load models due to an error: {e}. Starting from scratch.")
+            print(f"Could not load DDPG models. Error: {e}. Starting from scratch.")
+    # <<< END: MODIFIED SECTION >>>
