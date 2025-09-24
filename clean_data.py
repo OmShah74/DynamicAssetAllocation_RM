@@ -2,11 +2,6 @@ import pandas as pd
 import os
 
 def clean_yahoo_finance_data(input_path="data/India.csv", output_path="data/India_cleaned.csv"):
-    """
-    Cleans a wide-format CSV from Yahoo Finance where features and tickers
-    are in a multi-level header. This version uses a robust method to avoid
-    the 'cannot insert code, already exists' error and handles duplicate column names.
-    """
     if not os.path.exists(input_path):
         print(f"Error: Input file not found at {input_path}")
         print("Please ensure your wide-format data is saved there before running.")
