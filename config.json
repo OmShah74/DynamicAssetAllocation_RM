@@ -25,16 +25,18 @@
         ],
         "features": ["close", "open", "high", "low", "volume"],
         "agents": [
-            "CNN",
-            "PPO",
-            "3"
+            "DERL",
+            "DERL",
+            "60"
         ],
         "epochs": "10",
-        "noise_flag": "False",
+        "noise_flag": "True",
         "record_flag": "False",
         "plot_flag": "False",
         "reload_flag": "False",
         "trainable": "True",
-        "method": "model_free"
+        "method": "model_free",
+        "start_train_ts": 2000,
+        "update_embedding_freq": 42
     }
 }
