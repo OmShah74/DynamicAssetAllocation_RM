@@ -1,14 +1,11 @@
+# data/environment.py (Final Corrected Version)
 # -*- coding: utf-8 -*-
 import numpy as np
 import pandas as pd
 from math import log
-from datetime import datetime
 from typing import List
 
 eps = 1e-8
-
-def fill_zeros(x: str) -> str:
-    return '0' * (6 - len(x)) + x
 
 class Environment:
     def __init__(self, start_date: str, end_date: str, codes: List[str], features: List[str], window_length: int, market: str):
@@ -19,105 +16,109 @@ class Environment:
 
         print("*------------- Preparing Environment Data ---------------*")
         
-        # CORRECTED LINE: Read the CSV and set the 'date' column as the index
-        data = pd.read_csv(f'./data/{market}.csv', index_col='date', parse_dates=True, low_memory=False)
+        cleaned_filename = f'./data/{market}.csv'
+        data = pd.read_csv(cleaned_filename, parse_dates=['date'])
         
-        data.sort_index(inplace=True)
+        # --- START: ROBUST FEATURE ENGINEERING LOGIC ---
+        print("*------------- Engineering Features (Returns, etc.) ---------------*")
+        
+        # Pivot the table to have stocks as columns and features as sub-columns
+        df_pivot = data.pivot(index='date', columns='code', values=features)
+        
+        # Create a copy to store the final processed features
+        processed_data_df = df_pivot.copy()
 
-        data["code"] = data["code"].astype(str)
-        if market == 'China':
-            data["code"] = data["code"].apply(fill_zeros)
+        # Calculate price relatives for reward calculation (always based on original close price)
+        self.price_relatives = (df_pivot['close'] / df_pivot['close'].shift(1)).fillna(1.0)
 
-        data = data[data["code"].isin(codes)]
-        data[features] = data[features].astype(float)
+        # Engineer features by overwriting columns in the copied DataFrame
+        price_features = [f for f in features if f in ['open', 'high', 'low', 'close']]
+        for feature in price_features:
+            # This calculation produces a DataFrame of returns with stock codes as columns
+            returns = np.log(df_pivot[feature] / df_pivot[feature].shift(1))
+            # Now, we perform a valid block assignment, overwriting the original price data
+            processed_data_df[feature] = returns
 
-        # Filter to the valid date range
+        if 'volume' in features:
+            # Normalize volume using a rolling window
+            rolling_volume = df_pivot['volume'].rolling(window=self.L, min_periods=1).mean()
+            norm_volume = df_pivot['volume'] / (rolling_volume + eps)
+            # Overwrite the original volume data with the normalized volume
+            processed_data_df['volume'] = norm_volume
+        
+        # The final processed data now contains returns and normalized volume
+        # We also select the features in the order specified in the config
+        self.processed_data = processed_data_df[features].fillna(0).replace([np.inf, -np.inf], 0)
+        
+        # Filter dates based on session configuration
         start_dt = pd.to_datetime(start_date)
         end_dt = pd.to_datetime(end_date)
-        data = data[(data.index > start_dt) & (data.index < end_dt)]
+        self.processed_data = self.processed_data[(self.processed_data.index > start_dt) & (self.processed_data.index < end_dt)]
+        self.price_relatives = self.price_relatives.loc[self.processed_data.index]
+        self.unique_dates = self.processed_data.index
+        # --- END: ROBUST FEATURE ENGINEERING LOGIC ---
         
-        self.unique_dates = data.index.unique()
         self.date_len = len(self.unique_dates)
-
-        asset_dict = {}
-        for asset in codes:
-            asset_data = data[data["code"] == asset].reindex(self.unique_dates)
-            asset_data.sort_index(inplace=True)
-            
-            # Forward-fill missing values, then back-fill any remaining NaNs at the beginning
-            asset_data.ffill(inplace=True)
-            asset_data.bfill(inplace=True)
-
-            # Normalize prices by the last closing price
-            base_price = asset_data['close'].iloc[-1]
-            for col in features:
-                if col in asset_data.columns and base_price != 0:
-                    asset_data[col] /= base_price
-
-            asset_dict[str(asset)] = asset_data.drop(columns=['code'], errors='ignore')
-
-        print("*------------- Generating State Tensors ---------------*")
-        self.states = []
-        self.price_history = []
         
-        for t in range(self.L, self.date_len - 1):
-            # Price relative vector y_t: (p_t / p_{t-1})
-            current_prices = np.array([asset_dict[code]['close'].iloc[t] for code in codes])
-            prev_prices = np.array([asset_dict[code]['close'].iloc[t-1] for code in codes])
-            price_relatives = current_prices / (prev_prices + eps)
-            self.price_history.append(np.concatenate(([1.0], price_relatives))) # Add cash relative price
-
-            # State tensor X_t
-            state_list = []
-            for code in codes:
-                asset_features = asset_dict[code][features].iloc[t - self.L : t].values
-                state_list.append(asset_features)
-            
-            # Add a feature matrix for cash (all ones)
-            cash_features = np.ones((self.L, self.N))
-            state_list.insert(0, cash_features)
-
-            state_tensor = np.array(state_list).reshape(1, self.M, self.L, self.N)
-            self.states.append(state_tensor)
-            
-        self.price_history = np.array(self.price_history)
         self.reset()
+
+    def _get_state_tensor(self, t):
+        """Constructs the state tensor for a given timestep t."""
+        # Get a slice of L days of feature data ending at time t
+        feature_slice = self.processed_data.iloc[t - self.L : t].values
+        
+        # The data is already (L, N*stocks). Reshape to (stocks, L, N)
+        num_stocks = self.M - 1
+        state_for_stocks = np.reshape(feature_slice, (self.L, num_stocks, self.N)).transpose(1, 0, 2)
+        
+        # Add a feature matrix for cash (all zeros, as cash has no returns/volume)
+        cash_features = np.zeros((1, self.L, self.N))
+        
+        state_tensor = np.concatenate([cash_features, state_for_stocks], axis=0)
+        return state_tensor.reshape(1, self.M, self.L, self.N)
 
     def step(self, w1, w2):
         if not self.FLAG:
             self.FLAG = True
+            # For the first step, the state is the data from the first L days
+            state_tensor = self._get_state_tensor(self.L)
             return {
-                'reward': 0, 'continue': 1, 'next state': self.states[0],
+                'reward': 0, 'continue': 1, 'next state': state_tensor,
                 'weight vector': np.array([[1.0] + [0.0] * (self.M - 1)]),
-                'price': self.price_history[0], 'risk': 0
+                'price': np.ones(self.M)
             }
 
-        price_vector = self.price_history[self.t]
+        price_vector = self.price_relatives.iloc[self.t].values
+        price_vector = np.concatenate(([1.0], price_vector)) # Add cash price relative
         
+        # If w1 is None (as in pre-training), assume the previous state was 100% cash.
+        if w1 is None:
+            w1 = np.zeros_like(w2)
+            w1[0, 0] = 1.0
+
         mu = self.cost * (np.abs(w2[0][1:] - w1[0][1:])).sum()
         portfolio_return = np.dot(w2[0], price_vector)
-        
         r = portfolio_return - mu
-        
-        r = np.clip(r, eps, None)
-        reward = np.log(r)
+        # Use the raw log return for wealth tracking. Reward shaping happens in main.py.
+        reward = np.log(np.clip(r, eps, None))
         
         next_w = (w2[0] * price_vector) / (portfolio_return + eps)
-
         self.t += 1
+        
         not_terminal = 1
-        if self.t >= len(self.states):
+        if self.t >= self.date_len - 1:
             not_terminal = 0
             self.reset()
-            next_state = self.states[-1]
+            # Return the last valid state on termination
+            next_state = self._get_state_tensor(self.t) 
         else:
-            next_state = self.states[self.t]
+            next_state = self._get_state_tensor(self.t)
 
         return {
             'reward': reward, 'continue': not_terminal, 'next state': next_state,
-            'weight vector': next_w.reshape(1, -1), 'price': price_vector, 'risk': 0
+            'weight vector': next_w.reshape(1, -1), 'price': price_vector
         }
 
     def reset(self):
-        self.t = 0
+        self.t = self.L
         self.FLAG = False
