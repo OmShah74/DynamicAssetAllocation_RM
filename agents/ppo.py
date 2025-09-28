@@ -1,3 +1,5 @@
+# agents/ppo.py (Advanced Version with Conv1D + LSTM)
+# -*- coding: utf-8 -*-
 import tensorflow as tf
 from tensorflow.keras import layers
 import tensorflow_probability as tfp
@@ -6,16 +8,20 @@ import os
 
 class ActorCriticNetwork(tf.keras.Model):
     """
-    More advanced Actor-Critic network with deeper layers.
+    Advanced Actor-Critic network using Conv1D and LSTM for superior
+    time-series analysis.
     """
     def __init__(self, M):
         super(ActorCriticNetwork, self).__init__()
-        # Shared CNN layers
-        self.conv1 = layers.Conv2D(64, (1, 3), activation='relu', padding='valid')
-        self.bn1 = layers.BatchNormalization()
-        self.conv2 = layers.Conv2D(64, (1, 1), activation='relu', padding='valid')
-        self.bn2 = layers.BatchNormalization()
-        self.flatten = layers.Flatten()
+        self.M = M # Number of assets including cash
+
+        # --- START: NEW ARCHITECTURE ---
+        # Define layers for processing each asset's time-series data
+        self.conv1 = layers.Conv1D(filters=32, kernel_size=3, activation='relu')
+        self.lstm = layers.LSTM(64) # LSTM layer to capture temporal dependencies
+        # --- END: NEW ARCHITECTURE ---
+
+        # Shared dense layer after combining features from all assets
         self.shared_dense = layers.Dense(128, activation='relu')
 
         # Actor head
@@ -28,12 +34,28 @@ class ActorCriticNetwork(tf.keras.Model):
         self.critic_value = layers.Dense(1)
 
     def call(self, inputs):
-        x = self.conv1(inputs)
-        x = self.bn1(x)
-        x = self.conv2(x)
-        x = self.bn2(x)
-        x = self.flatten(x)
-        x = self.shared_dense(x)
+        # Input shape: (batch_size, M, L, N)
+        # M = assets, L = window_length, N = features
+        
+        all_asset_features = []
+        
+        # --- START: NEW ARCHITECTURE FORWARD PASS ---
+        # Process each asset's time-series individually
+        for i in range(self.M):
+            # Get the time-series for one asset: shape (batch_size, L, N)
+            asset_series = inputs[:, i, :, :]
+            
+            # Pass through Conv1D and LSTM
+            x = self.conv1(asset_series)
+            x = self.lstm(x)
+            all_asset_features.append(x)
+        
+        # Combine the features from all assets
+        combined_features = tf.concat(all_asset_features, axis=1)
+        # --- END: NEW ARCHITECTURE FORWARD PASS ---
+        
+        # Pass combined features through shared dense layer
+        x = self.shared_dense(combined_features)
         
         # Actor pathway
         actor_x = self.actor_dense(x)
@@ -52,12 +74,14 @@ class PPO:
         self.gamma = 0.99
         self.lam = 0.95 # Lambda for GAE
         self.clip_epsilon = 0.2
-        self.entropy_coeff = 0.01 # Coefficient for entropy bonus
-        self.update_steps = 10
+        # <<<--- CHANGE HERE: Increased entropy bonus to force exploration --->>>
+        self.entropy_coeff = 0.1
+        self.update_steps = 20 # Train more on each batch of experience
         self.model_save_path = f'./saved_models/PPO/'
         
         self.model = ActorCriticNetwork(M)
-        self.optimizer = tf.keras.optimizers.Adam(learning_rate=5e-5) # Slower learning rate for stability
+        # <<<--- CHANGE HERE: Slower learning rate for noisy financial data --->>>
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=1e-5)
         self.mse = tf.keras.losses.MeanSquaredError()
 
         # Build model
@@ -90,20 +114,12 @@ class PPO:
         self.buffer['log_probs'].append(log_prob.numpy()[0])
     
     def _calculate_gae(self, rewards, values, not_terminals, last_state_value):
-        """
-        Calculates the Generalized Advantage Estimation (GAE).
-        """
         advantages = np.zeros_like(rewards, dtype=np.float32)
         last_advantage = 0
-        
-        # Append the value of the final state to the values list for calculation
         values_with_last = np.append(values, last_state_value)
-        
         for t in reversed(range(len(rewards))):
             delta = rewards[t] + self.gamma * values_with_last[t+1] * not_terminals[t] - values_with_last[t]
             advantages[t] = last_advantage = delta + self.gamma * self.lam * not_terminals[t] * last_advantage
-        
-        # The discounted rewards are just the advantages plus the values
         discounted_rewards = advantages + values
         return advantages, discounted_rewards
 
@@ -112,28 +128,15 @@ class PPO:
         with tf.GradientTape() as tape:
             mu, sigma, values = self.model(states, training=True)
             dist = tfp.distributions.Normal(loc=mu, scale=sigma)
-            
             new_log_probs = dist.log_prob(actions)
-            
-            # Reshape advantages to match the shape of log_probs for element-wise multiplication
             advantages_reshaped = tf.reshape(advantages, (-1, 1))
-
-            # Actor Loss (Clipped Surrogate Objective)
             ratio = tf.exp(new_log_probs - old_log_probs)
-            
             surr1 = ratio * advantages_reshaped
             surr2 = tf.clip_by_value(ratio, 1.0 - self.clip_epsilon, 1.0 + self.clip_epsilon) * advantages_reshaped
             actor_loss = -tf.reduce_mean(tf.minimum(surr1, surr2))
-
-            # Critic Loss (Value Function Loss)
             critic_loss = self.mse(discounted_rewards, values)
-
-            # Entropy Bonus for Exploration
             entropy = tf.reduce_mean(dist.entropy())
-            
-            # Total Loss
             total_loss = actor_loss + 0.5 * critic_loss - self.entropy_coeff * entropy
-        
         grads = tape.gradient(total_loss, self.model.trainable_variables)
         self.optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
         return critic_loss
@@ -141,41 +144,30 @@ class PPO:
     def train(self, method, epoch):
         if not self.buffer['rewards']:
             return {"critic_loss": 0}
-        
         last_state = self.buffer['states'][-1][np.newaxis, ...]
         _, _, last_state_value = self.model(last_state)
-        
         rewards = np.array(self.buffer['rewards'])
         values = np.array(self.buffer['values'])
-        not_terminals = np.ones_like(rewards) # Assume all steps are non-terminal until the end
-        
+        not_terminals = np.ones_like(rewards)
         advantages, discounted_rewards = self._calculate_gae(rewards, values, not_terminals, last_state_value.numpy()[0, 0])
-        
         states = tf.convert_to_tensor(np.array(self.buffer['states']), dtype=tf.float32)
         actions = tf.convert_to_tensor(np.array(self.buffer['actions']), dtype=tf.float32)
         old_log_probs = tf.convert_to_tensor(np.array(self.buffer['log_probs']), dtype=tf.float32)
         discounted_rewards = tf.convert_to_tensor(discounted_rewards[:, np.newaxis], dtype=tf.float32)
         advantages = tf.convert_to_tensor(advantages, dtype=tf.float32)
-        
         critic_loss = 0
         for _ in range(self.update_steps):
             loss = self._update_step(states, actions, discounted_rewards, old_log_probs, advantages)
             critic_loss += loss.numpy()
-
         self.reset_buffer()
         return {"critic_loss": critic_loss / self.update_steps}
 
-    # <<< START: MODIFIED SECTION >>>
-    # This function is now specifically for saving the BEST model
     def save_best_models(self):
-        """Saves the weights of the current model as the best model."""
         model_path = os.path.join(self.model_save_path, f'{self.name}_model_best.weights.h5')
         self.model.save_weights(model_path)
         print(f"--- New best model saved ---")
 
-    # This function is now simplified to only load the BEST model
     def load_models(self):
-        """Loads the best available model weights."""
         try:
             model_path = os.path.join(self.model_save_path, f'{self.name}_model_best.weights.h5')
             if os.path.exists(model_path):
@@ -185,4 +177,3 @@ class PPO:
                 print("Could not find a best model checkpoint. Starting from scratch.")
         except Exception as e:
             print(f"Could not load PPO model. Error: {e}. Starting from scratch.")
-    # <<< END: MODIFIED SECTION >>>

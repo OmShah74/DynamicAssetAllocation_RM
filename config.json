@@ -29,12 +29,12 @@
             "PPO",
             "3"
         ],
-        "epochs": "500",
+        "epochs": "10",
         "noise_flag": "False",
         "record_flag": "False",
         "plot_flag": "False",
-        "reload_flag": "True",
-        "trainable": "False",
+        "reload_flag": "False",
+        "trainable": "True",
         "method": "model_free"
     }
 }
