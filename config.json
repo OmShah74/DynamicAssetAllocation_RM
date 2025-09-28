@@ -25,9 +25,9 @@
         ],
         "features": ["close", "open", "high", "low", "volume"],
         "agents": [
-            "CNN",
-            "PPO",
-            "3"
+            "VAE",
+            "DERL",
+            "10"
         ],
         "epochs": "10",
         "noise_flag": "False",

@@ -1,4 +1,4 @@
-# agents/td3.py
+# agents/td3.py (Final Corrected Version with Optimizer Pre-building)
 import tensorflow as tf
 from tensorflow.keras import layers
 import numpy as np
@@ -49,19 +49,36 @@ class TD3:
         self.target_actor = Actor(action_dim)
         self.target_critic1 = Critic()
         self.target_critic2 = Critic()
-
-        # Build and copy weights
-        dummy_embedding = tf.random.normal([1, latent_dim])
-        self.actor(dummy_embedding)
-        self.critic1([dummy_embedding, self.actor(dummy_embedding)])
-        self.critic2([dummy_embedding, self.actor(dummy_embedding)])
-        self.target_actor.set_weights(self.actor.get_weights())
-        self.target_critic1.set_weights(self.critic1.get_weights())
-        self.target_critic2.set_weights(self.critic2.get_weights())
         
         self.actor_optimizer = tf.keras.optimizers.Adam(learning_rate=3e-4)
         self.critic_optimizer = tf.keras.optimizers.Adam(learning_rate=3e-4)
         self.train_step_counter = 0
+
+        # Build all networks with dummy data
+        dummy_embedding = tf.random.normal([1, latent_dim])
+        dummy_action = self.actor(dummy_embedding)
+        self.target_actor(dummy_embedding)
+        self.critic1([dummy_embedding, dummy_action])
+        self.critic2([dummy_embedding, dummy_action])
+        self.target_critic1([dummy_embedding, dummy_action])
+        self.target_critic2([dummy_embedding, dummy_action])
+        
+        # Now that all networks are built, copy the weights
+        self.target_actor.set_weights(self.actor.get_weights())
+        self.target_critic1.set_weights(self.critic1.get_weights())
+        self.target_critic2.set_weights(self.critic2.get_weights())
+
+        # <<< START: THIS IS THE FIX FOR YOUR ERROR >>>
+        # Pre-build the optimizers by applying zero gradients.
+        # This forces them to create their state variables outside the tf.function.
+        zero_grads_actor = [tf.zeros_like(v) for v in self.actor.trainable_variables]
+        zero_grads_critic = [tf.zeros_like(v) for v in self.critic1.trainable_variables + self.critic2.trainable_variables]
+        self.actor_optimizer.apply_gradients(zip(zero_grads_actor, self.actor.trainable_variables))
+        self.critic_optimizer.apply_gradients(zip(zero_grads_critic, self.critic1.trainable_variables + self.critic2.trainable_variables))
+        # <<< END: FIX >>>
+
+        if load_weights:
+            self.load_models()
 
     def predict(self, state_embedding):
         return self.actor(state_embedding).numpy()
@@ -70,35 +87,28 @@ class TD3:
     def update(self, z, a, r, z_prime, not_done):
         # --- Train Critic ---
         with tf.GradientTape(persistent=True) as tape:
-            # Target policy smoothing
             noise = tf.clip_by_value(tf.random.normal(a.shape) * self.policy_noise, -self.noise_clip, self.noise_clip)
-            target_a = tf.clip_by_value(self.target_actor(z_prime) + noise, 0, 1) # Clip to valid action range
-            target_a = target_a / tf.reduce_sum(target_a, axis=1, keepdims=True) # Re-normalize
-
-            # Double Q-learning: take the minimum of the two target critics
+            target_a = tf.clip_by_value(self.target_actor(z_prime) + noise, 0, 1)
+            target_a = target_a / tf.reduce_sum(target_a, axis=1, keepdims=True)
             target_q1 = self.target_critic1([z_prime, target_a])
             target_q2 = self.target_critic2([z_prime, target_a])
             target_q = r + not_done * self.gamma * tf.minimum(target_q1, target_q2)
-
             current_q1 = self.critic1([z, a])
             current_q2 = self.critic2([z, a])
-            
-            critic_loss = tf.reduce_mean(tf.square(current_q1 - target_q)) + \
-                          tf.reduce_mean(tf.square(current_q2 - target_q))
+            critic_loss = tf.reduce_mean(tf.square(current_q1 - target_q)) + tf.reduce_mean(tf.square(current_q2 - target_q))
         
         critic_grad = tape.gradient(critic_loss, self.critic1.trainable_variables + self.critic2.trainable_variables)
         self.critic_optimizer.apply_gradients(zip(critic_grad, self.critic1.trainable_variables + self.critic2.trainable_variables))
         
+        self.train_step_counter += 1
+
         # --- Delayed Actor Training ---
         actor_loss = tf.constant(0.0)
         if self.train_step_counter % self.policy_delay == 0:
             with tf.GradientTape() as tape:
                 actor_loss = -tf.reduce_mean(self.critic1([z, self.actor(z)]))
-            
             actor_grad = tape.gradient(actor_loss, self.actor.trainable_variables)
             self.actor_optimizer.apply_gradients(zip(actor_grad, self.actor.trainable_variables))
-            
-            # Soft update target networks
             self._update_target_networks()
 
         return critic_loss, actor_loss
@@ -113,12 +123,17 @@ class TD3:
 
     def save_best_models(self):
         self.actor.save_weights(os.path.join(self.model_save_path, f'{self.name}_actor_best.weights.h5'))
+        self.critic1.save_weights(os.path.join(self.model_save_path, f'{self.name}_critic1_best.weights.h5'))
+        self.critic2.save_weights(os.path.join(self.model_save_path, f'{self.name}_critic2_best.weights.h5'))
 
     def load_models(self):
         try:
             self.actor.load_weights(os.path.join(self.model_save_path, f'{self.name}_actor_best.weights.h5'))
-            # Re-sync target networks after loading
+            self.critic1.load_weights(os.path.join(self.model_save_path, f'{self.name}_critic1_best.weights.h5'))
+            self.critic2.load_weights(os.path.join(self.model_save_path, f'{self.name}_critic2_best.weights.h5'))
             self.target_actor.set_weights(self.actor.get_weights())
+            self.target_critic1.set_weights(self.critic1.get_weights())
+            self.target_critic2.set_weights(self.critic2.get_weights())
             print(f"DERL models loaded successfully.")
         except:
             print("Could not find DERL model checkpoint. Starting from scratch.")
