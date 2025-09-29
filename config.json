@@ -33,8 +33,8 @@
         "noise_flag": "True",
         "record_flag": "False",
         "plot_flag": "False",
-        "reload_flag": "False",
-        "trainable": "True",
+        "reload_flag": "True",
+        "trainable": "False",
         "method": "model_free",
         "start_train_ts": 2000,
         "update_embedding_freq": 42
