@@ -30,10 +30,10 @@ def clean_yahoo_finance_data(input_path="data/India.csv", output_path="data/Indi
     print("Stacking data...")
     # stacked_df = df.stack(level='ticker', future_stack=True)
     
-    # Debug: Check structure after stacking
-    print(f"Stacked data shape: {stacked_df.shape}")
-    print(f"Stacked index names: {stacked_df.index.names}")
-    print(f"Stacked columns: {stacked_df.columns.tolist()}")
+    # # Debug: Check structure after stacking
+    # print(f"Stacked data shape: {stacked_df.shape}")
+    # print(f"Stacked index names: {stacked_df.index.names}")
+    # print(f"Stacked columns: {stacked_df.columns.tolist()}")
 
     # Reset the index to convert the multi-index to columns
     print("Resetting index...")
