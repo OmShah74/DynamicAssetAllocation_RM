@@ -37,7 +37,7 @@ def clean_yahoo_finance_data(input_path="data/India.csv", output_path="data/Indi
 
     # Reset the index to convert the multi-index to columns
     print("Resetting index...")
-    clean_df = stacked_df.reset_index()
+    # clean_df = stacked_df.reset_index()
     
     # Debug: Check what columns we have after reset_index
     print(f"Columns after reset_index: {clean_df.columns.tolist()}")
